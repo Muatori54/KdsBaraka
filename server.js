@@ -81,8 +81,9 @@ app.post('/api/commande', (req, res) => {
   const supplements = parseField(data.supplements, []);
   const extras = parseField(data.extras, []);
 
-  // Total : depuis les articles ou depuis data.total
-  let total = parseFloat(data.total) || 0;
+  // Total : gérer virgule française ("14,5"), symbole €, espaces
+  let totalRaw = String(data.total || '0').replace(/[€\s]/g, '').replace(',', '.').trim();
+  let total = parseFloat(totalRaw) || 0;
   if (total === 0 && articles.length > 0) {
     total = articles.reduce((sum, a) => sum + (parseFloat(a.prix) || 0) * (parseInt(a.qte) || 1), 0);
   }
