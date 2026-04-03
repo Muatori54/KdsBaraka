@@ -1,50 +1,51 @@
 <!DOCTYPE html>
 <html lang="fr">
+
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>KDS EL BARAKA — Cuisine</title>
-  <meta name="description" content="Kitchen Display System — Affichage des commandes en temps réel pour la cuisine EL BARAKA." />
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🍔</text></svg>" />
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="style.css" />
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>KDS EL BARAKA — Cuisine</title>
+    <meta name="description" content="Kitchen Display System — Affichage temps réel des commandes cuisine EL BARAKA." />
+    <link rel="icon"
+        href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🍔</text></svg>" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap"
+        rel="stylesheet" />
+    <link rel="stylesheet" href="style.css" />
 </head>
+
 <body>
 
-  <!-- ── HEADER ─────────────────────────────────── -->
-  <header id="kds-header">
-    <div class="header-left">
-      <span class="logo-icon">🍔</span>
-      <h1>EL BARAKA <span class="header-subtitle">Kitchen</span></h1>
-    </div>
-    <div class="header-center">
-      <div class="counter-badge" id="order-counter">
-        <span class="counter-pulse"></span>
-        <span class="counter-number" id="counter-number">0</span>
-        <span class="counter-label">commandes en cours</span>
-      </div>
-    </div>
-    <div class="header-right">
-      <div class="clock" id="clock">00:00:00</div>
-      <button class="btn-test" id="btn-add-test" title="Ajouter commande test">
-        🧪 Test
-      </button>
-    </div>
-  </header>
+    <!-- ── HEADER ─────────────────────────────────── -->
+    <header id="kds-header">
+        <div class="header-left">
+            <span class="logo-icon">🍔</span>
+            <h1 class="logo-text">EL BARAKA <span class="logo-sub">KITCHEN</span></h1>
+        </div>
+        <div class="header-center">
+            <div class="counter-badge" id="order-counter">
+                <span class="counter-dot"></span>
+                <span class="counter-num" id="counter-num">0</span>
+                <span class="counter-label">en cours</span>
+            </div>
+        </div>
+        <div class="header-right">
+            <span class="clock" id="clock">00:00:00</span>
+            <button class="btn-test" id="btn-test" title="Injecter commande test">🧪 Test</button>
+        </div>
+    </header>
 
-  <!-- ── GRID ───────────────────────────────────── -->
-  <main id="orders-grid">
-    <!-- Cards injected here by JS -->
-    <div class="empty-state" id="empty-state">
-      <div class="empty-icon">📋</div>
-      <p>Aucune commande en attente</p>
-      <p class="empty-sub">Les nouvelles commandes apparaîtront ici automatiquement</p>
-    </div>
-  </main>
+    <!-- ── ORDERS GRID ────────────────────────────── -->
+    <main id="grid">
+        <div class="empty-state" id="empty-state">
+            <div class="empty-icon">📋</div>
+            <p class="empty-title">Aucune commande en cours</p>
+            <p class="empty-sub">Les commandes apparaîtront automatiquement ici</p>
+        </div>
+    </main>
 
-  <!-- ── AUDIO (generated via AudioContext) ─────── -->
-  <script src="app.js"></script>
+    <script src="app.js"></script>
 </body>
+
 </html>
