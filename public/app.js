@@ -1,68 +1,51 @@
-/* ═══════════════════════════════════════════════
+/* ═══════════════════════════════════════════════════════════
    KDS EL BARAKA — Frontend Logic
-   SSE Client + Order Card Rendering + Audio
-   ═══════════════════════════════════════════════ */
+   SSE Client · Card Rendering · Audio · Timers
+   ═══════════════════════════════════════════════════════════ */
 
 (() => {
     'use strict';
 
-    // ── DOM Refs ─────────────────────────────────
-    const grid = document.getElementById('orders-grid');
+    const grid = document.getElementById('grid');
     const emptyState = document.getElementById('empty-state');
-    const counterNum = document.getElementById('counter-number');
+    const counterNum = document.getElementById('counter-num');
     const clockEl = document.getElementById('clock');
-    const btnTest = document.getElementById('btn-add-test');
+    const btnTest = document.getElementById('btn-test');
 
-    // ── State ────────────────────────────────────
-    let orders = new Map();   // id → { commande, element, interval }
+    const orders = new Map();
     let audioCtx = null;
 
-    // ── Audio Beep (AudioContext, no external file) ──
+    // ── Audio ────────────────────────────────────
     function initAudio() {
-        if (!audioCtx) {
-            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        }
+        if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     }
 
-    function playBeep() {
+    function playBip() {
         initAudio();
         if (audioCtx.state === 'suspended') audioCtx.resume();
-
-        // Two-tone notification beep
         const now = audioCtx.currentTime;
-
-        // First tone
         const osc1 = audioCtx.createOscillator();
-        const gain1 = audioCtx.createGain();
-        osc1.type = 'sine';
-        osc1.frequency.value = 880;
-        gain1.gain.setValueAtTime(0.3, now);
-        gain1.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
-        osc1.connect(gain1);
-        gain1.connect(audioCtx.destination);
-        osc1.start(now);
-        osc1.stop(now + 0.15);
-
-        // Second tone (higher)
+        const g1 = audioCtx.createGain();
+        osc1.type = 'sine'; osc1.frequency.value = 880;
+        g1.gain.setValueAtTime(0.3, now);
+        g1.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
+        osc1.connect(g1).connect(audioCtx.destination);
+        osc1.start(now); osc1.stop(now + 0.2);
         const osc2 = audioCtx.createOscillator();
-        const gain2 = audioCtx.createGain();
-        osc2.type = 'sine';
-        osc2.frequency.value = 1100;
-        gain2.gain.setValueAtTime(0.3, now + 0.15);
-        gain2.gain.exponentialRampToValueAtTime(0.01, now + 0.35);
-        osc2.connect(gain2);
-        gain2.connect(audioCtx.destination);
-        osc2.start(now + 0.15);
-        osc2.stop(now + 0.35);
+        const g2 = audioCtx.createGain();
+        osc2.type = 'sine'; osc2.frequency.value = 1100;
+        g2.gain.setValueAtTime(0.3, now + 0.18);
+        g2.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
+        osc2.connect(g2).connect(audioCtx.destination);
+        osc2.start(now + 0.18); osc2.stop(now + 0.4);
     }
+
+    document.addEventListener('click', () => initAudio(), { once: true });
 
     // ── Clock ────────────────────────────────────
     function updateClock() {
-        const now = new Date();
-        clockEl.textContent = now.toLocaleTimeString('fr-FR', {
-            hour: '2-digit',
-            minute: '2-digit',
-            second: '2-digit'
+        clockEl.textContent = new Date().toLocaleTimeString('fr-FR', {
+            hour: '2-digit', minute: '2-digit', second: '2-digit'
         });
     }
     setInterval(updateClock, 1000);
@@ -70,272 +53,166 @@
 
     // ── Counter ──────────────────────────────────
     function updateCounter() {
-        const count = orders.size;
-        counterNum.textContent = count;
-        emptyState.classList.toggle('hidden', count > 0);
+        counterNum.textContent = orders.size;
+        emptyState.classList.toggle('hidden', orders.size > 0);
     }
 
-    // ── Timer Formatting ─────────────────────────
-    function formatTimer(receivedAt) {
+    // ── Timer ────────────────────────────────────
+    function fmtTimer(receivedAt) {
         const diff = Math.floor((Date.now() - new Date(receivedAt).getTime()) / 1000);
-        const m = Math.floor(diff / 60);
-        const s = diff % 60;
+        const m = Math.floor(Math.max(0, diff) / 60);
+        const s = Math.max(0, diff) % 60;
         return {
             text: `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`,
             urgent: m >= 10
         };
     }
 
-    // ── Build Card HTML ──────────────────────────
+    // ── Helpers ──────────────────────────────────
+    function esc(t) { const d = document.createElement('div'); d.textContent = t; return d.innerHTML; }
+
+    // ── Card Builder ─────────────────────────────
     function buildCard(cmd) {
-        const card = document.createElement('div');
-        card.className = 'order-card new-highlight';
-        card.id = `card-${cmd.id}`;
+        const el = document.createElement('div');
+        el.className = 'order-card highlight';
+        el.id = `card-${cmd.id}`;
 
-        // Determine canal
-        const isPhone = (cmd.canal || '').toLowerCase().includes('t') || (cmd.canal || '').toLowerCase().includes('phone');
-        const canalClass = isPhone ? 'telephone' : 'surplace';
-        const canalIcon = isPhone ? '📞' : '🖥️';
-        const canalText = isPhone ? 'Téléphone' : 'Sur place';
+        const canalLow = (cmd.canal || '').toLowerCase();
+        const isPhone = canalLow.includes('tél') || canalLow.includes('tel') || canalLow.includes('phone') || canalLow.includes('sofia') || canalLow.includes('adam');
+        const badgeClass = isPhone ? 'phone' : 'local';
+        const badgeIcon = isPhone ? '📞' : '🖥️';
+        const badgeText = isPhone ? cmd.canal : 'Sur place';
 
-        // Format received time
-        const receivedDate = new Date(cmd.received_at || cmd.timestamp);
-        const timeStr = receivedDate.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+        const recDate = new Date(cmd.received_at || cmd.timestamp);
+        const timeStr = recDate.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
 
-        // Articles HTML
+        // Articles — NO individual prices
         const articlesHtml = (cmd.articles || []).map(a => `
-      <li class="article-item">
-        <span class="article-name">
-          <span class="article-qty">${a.qte}x</span>
-          ${escapeHtml(a.nom)}
+      <li class="item">
+        <span class="item-name">
+          <span class="qty">${a.qte}x</span>
+          ${esc(a.nom)}
         </span>
-        <span class="article-price">${a.prix.toFixed(2)}€</span>
       </li>
     `).join('');
 
-        // Details sections
-        let detailsHtml = '';
-
-        if (cmd.sauces && cmd.sauces.length > 0) {
-            detailsHtml += `
-        <div class="detail-row">
-          <span class="detail-icon">🌶️</span>
-          <span class="detail-label">Sauces:</span>
-          <span class="detail-value">${cmd.sauces.map(s => `<span class="tag">${escapeHtml(s)}</span>`).join(' ')}</span>
-        </div>`;
+        // Details
+        let details = '';
+        if (cmd.sauces && cmd.sauces.length) {
+            details += `<div class="detail"><span class="detail-icon">🌶️</span><span class="detail-lbl">Sauces :</span><span class="detail-val">${cmd.sauces.map(s => `<span class="tag">${esc(s)}</span>`).join('')}</span></div>`;
         }
-
         if (cmd.boisson) {
-            detailsHtml += `
-        <div class="detail-row">
-          <span class="detail-icon">🥤</span>
-          <span class="detail-label">Boisson:</span>
-          <span class="detail-value">${escapeHtml(cmd.boisson)}</span>
-        </div>`;
+            details += `<div class="detail"><span class="detail-icon">🥤</span><span class="detail-lbl">Boisson :</span><span class="detail-val">${esc(cmd.boisson)}</span></div>`;
         }
-
-        if (cmd.supplements && cmd.supplements.length > 0) {
-            detailsHtml += `
-        <div class="detail-row">
-          <span class="detail-icon">➕</span>
-          <span class="detail-label">Suppl.:</span>
-          <span class="detail-value">${cmd.supplements.map(s => `<span class="tag">${escapeHtml(s)}</span>`).join(' ')}</span>
-        </div>`;
+        if (cmd.supplements && cmd.supplements.length) {
+            details += `<div class="detail"><span class="detail-icon">➕</span><span class="detail-lbl">Suppl. :</span><span class="detail-val">${cmd.supplements.map(s => `<span class="tag">${esc(s)}</span>`).join('')}</span></div>`;
         }
-
-        if (cmd.extras && cmd.extras.length > 0) {
-            detailsHtml += `
-        <div class="detail-row">
-          <span class="detail-icon">⭐</span>
-          <span class="detail-label">Extras:</span>
-          <span class="detail-value">${cmd.extras.map(s => `<span class="tag">${escapeHtml(s)}</span>`).join(' ')}</span>
-        </div>`;
+        if (cmd.extras && cmd.extras.length) {
+            details += `<div class="detail"><span class="detail-icon">⭐</span><span class="detail-lbl">Extras :</span><span class="detail-val">${cmd.extras.map(s => `<span class="tag">${esc(s)}</span>`).join('')}</span></div>`;
         }
-
         if (cmd.dessert) {
-            detailsHtml += `
-        <div class="detail-row">
-          <span class="detail-icon">🍰</span>
-          <span class="detail-label">Dessert:</span>
-          <span class="detail-value">${escapeHtml(cmd.dessert)}</span>
-        </div>`;
+            details += `<div class="detail"><span class="detail-icon">🍰</span><span class="detail-lbl">Dessert :</span><span class="detail-val">${esc(cmd.dessert)}</span></div>`;
         }
 
-        card.innerHTML = `
-      <div class="card-header">
-        <span class="card-id">${escapeHtml(cmd.id)}</span>
-        <span class="canal-badge ${canalClass}">${canalIcon} ${canalText}</span>
+        let clientHtml = '';
+        if (cmd.nom_client) {
+            clientHtml = `<div class="client-row"><span class="client-icon">👤</span><span class="detail-lbl">Client :</span><span class="client-name">${esc(cmd.nom_client)}</span></div>`;
+        }
+
+        el.innerHTML = `
+      <div class="card-head">
+        <span class="card-id">${esc(cmd.id)}</span>
+        <span class="badge ${badgeClass}">${badgeIcon} ${esc(badgeText)}</span>
       </div>
-      <div class="card-timer-row">
-        <span class="received-time">Reçue à ${timeStr}</span>
-        <span class="timer" data-received="${cmd.received_at || cmd.timestamp}">00:00</span>
+      <div class="card-time">
+        <span class="received">Reçue à ${timeStr}</span>
+        <span class="timer" data-at="${cmd.received_at || cmd.timestamp}">
+          <span class="timer-dot"></span>
+          <span class="timer-text">00:00</span>
+        </span>
       </div>
       <div class="card-body">
-        <ul class="articles-list">${articlesHtml}</ul>
+        <ul class="items">${articlesHtml}</ul>
       </div>
-      ${detailsHtml ? `<div class="card-details">${detailsHtml}</div>` : ''}
-      <div class="card-footer">
-        <span class="total">${(cmd.total || 0).toFixed(2)}<span class="total-currency">€</span></span>
-        <div class="card-actions">
-          <button class="btn-cancel" data-id="${cmd.id}" title="Annuler la commande">✕ Annuler</button>
-          <button class="btn-ready" data-id="${cmd.id}" title="Commande prête">✓ Prêt</button>
+      ${details ? `<div class="card-details">${details}</div>` : ''}
+      ${clientHtml}
+      <div class="card-foot">
+        <span class="total">${(cmd.total || 0).toFixed(2)}<span class="total-eur">€</span></span>
+        <div class="actions">
+          <button class="btn-cancel" data-id="${cmd.id}">✕ Annuler</button>
+          <button class="btn-done" data-id="${cmd.id}">✓ Prêt</button>
         </div>
       </div>
     `;
 
-        // Event listeners
-        card.querySelector('.btn-ready').addEventListener('click', () => markReady(cmd.id));
-        card.querySelector('.btn-cancel').addEventListener('click', () => cancelOrder(cmd.id));
-
-        return card;
+        el.querySelector('.btn-done').addEventListener('click', () => markDone(cmd.id));
+        el.querySelector('.btn-cancel').addEventListener('click', () => cancelOrder(cmd.id));
+        return el;
     }
 
-    // ── Escape HTML ──────────────────────────────
-    function escapeHtml(text) {
-        const div = document.createElement('div');
-        div.textContent = text;
-        return div.innerHTML;
-    }
-
-    // ── Add Order to Grid ────────────────────────
-    function addOrder(cmd, withSound = true) {
-        if (orders.has(cmd.id)) return; // prevent duplicates
-
-        const card = buildCard(cmd);
-
-        // Insert before empty state, sorted by time (oldest first = at start)
-        const existingCards = grid.querySelectorAll('.order-card');
-        let inserted = false;
-
+    // ── Order Management ─────────────────────────
+    function addOrder(cmd, withSound) {
+        if (orders.has(cmd.id)) return;
+        const el = buildCard(cmd);
+        const cards = grid.querySelectorAll('.order-card');
         const cmdTime = new Date(cmd.received_at || cmd.timestamp).getTime();
-
-        for (const existing of existingCards) {
-            const timerEl = existing.querySelector('.timer');
-            if (timerEl) {
-                const existingTime = new Date(timerEl.dataset.received).getTime();
-                if (cmdTime < existingTime) {
-                    grid.insertBefore(card, existing);
-                    inserted = true;
-                    break;
-                }
+        let inserted = false;
+        for (const c of cards) {
+            const t = c.querySelector('.timer');
+            if (t && new Date(t.dataset.at).getTime() > cmdTime) {
+                grid.insertBefore(el, c); inserted = true; break;
             }
         }
+        if (!inserted) grid.insertBefore(el, emptyState);
 
-        if (!inserted) {
-            grid.insertBefore(card, emptyState);
-        }
-
-        // Timer interval
-        const timerEl = card.querySelector('.timer');
+        const timerEl = el.querySelector('.timer');
+        const timerText = el.querySelector('.timer-text');
         const interval = setInterval(() => {
-            const { text, urgent } = formatTimer(timerEl.dataset.received);
-            timerEl.textContent = text;
+            const { text, urgent } = fmtTimer(timerEl.dataset.at);
+            timerText.textContent = text;
             timerEl.classList.toggle('urgent', urgent);
         }, 1000);
 
-        orders.set(cmd.id, { commande: cmd, element: card, interval });
-
-        // Remove highlight after 3s
-        setTimeout(() => card.classList.remove('new-highlight'), 3000);
-
-        // Sound
-        if (withSound) {
-            playBeep();
-        }
-
+        orders.set(cmd.id, { cmd, el, interval });
+        setTimeout(() => el.classList.remove('highlight'), 3000);
+        if (withSound) playBip();
         updateCounter();
     }
 
-    // ── Remove Order ─────────────────────────────
-    function removeOrder(id, animate = false) {
+    function removeOrder(id, type) {
         const order = orders.get(id);
         if (!order) return;
-
         clearInterval(order.interval);
-
-        if (animate) {
-            order.element.classList.add('completed');
-            setTimeout(() => {
-                order.element.remove();
-                orders.delete(id);
-                updateCounter();
-            }, 800);
-        } else {
-            order.element.remove();
-            orders.delete(id);
-            updateCounter();
-        }
+        order.el.classList.add(type === 'done' ? 'done' : 'cancelled');
+        setTimeout(() => { order.el.remove(); orders.delete(id); updateCounter(); }, type === 'done' ? 700 : 350);
     }
 
-    // ── Mark as Ready ────────────────────────────
-    async function markReady(id) {
-        try {
-            await fetch(`/api/commande/${id}`, { method: 'DELETE' });
-            removeOrder(id, true);
-        } catch (e) {
-            console.error('Error marking ready:', e);
-        }
+    async function markDone(id) {
+        try { await fetch(`/api/commande/${id}`, { method: 'DELETE' }); removeOrder(id, 'done'); } catch (e) { console.error(e); }
     }
 
-    // ── Cancel Order ─────────────────────────────
     async function cancelOrder(id) {
-        try {
-            await fetch(`/api/commande/${id}`, { method: 'DELETE' });
-            removeOrder(id, false);
-        } catch (e) {
-            console.error('Error cancelling:', e);
-        }
+        try { await fetch(`/api/commande/${id}`, { method: 'DELETE' }); removeOrder(id, 'cancel'); } catch (e) { console.error(e); }
     }
 
-    // ── SSE Connection ───────────────────────────
+    // ── SSE ──────────────────────────────────────
     function connectSSE() {
-        const evtSource = new EventSource('/api/events');
-
-        evtSource.onmessage = (event) => {
-            const data = JSON.parse(event.data);
-
-            switch (data.type) {
-                case 'init':
-                    // Load all existing orders (no sound on init)
-                    (data.commandes || []).forEach(cmd => addOrder(cmd, false));
-                    break;
-
-                case 'new':
-                    addOrder(data.commande, true);
-                    break;
-
-                case 'remove':
-                    removeOrder(data.id, true);
-                    break;
-            }
+        const src = new EventSource('/api/events');
+        src.onmessage = (evt) => {
+            const data = JSON.parse(evt.data);
+            if (data.type === 'init') (data.commandes || []).forEach(c => addOrder(c, false));
+            else if (data.type === 'new') addOrder(data.commande, true);
+            else if (data.type === 'remove') removeOrder(data.id, 'done');
         };
-
-        evtSource.onerror = () => {
-            console.warn('SSE connection lost. Reconnecting in 3s...');
-            evtSource.close();
-            setTimeout(connectSSE, 3000);
-        };
+        src.onerror = () => { src.close(); setTimeout(connectSSE, 3000); };
     }
 
     // ── Test Button ──────────────────────────────
     btnTest.addEventListener('click', async () => {
-        btnTest.disabled = true;
-        btnTest.style.opacity = '0.5';
-        try {
-            await fetch('/api/test-commande');
-        } catch (e) {
-            console.error('Error creating test order:', e);
-        }
-        setTimeout(() => {
-            btnTest.disabled = false;
-            btnTest.style.opacity = '1';
-        }, 500);
+        btnTest.disabled = true; btnTest.style.opacity = '0.5';
+        try { await fetch('/api/test-commande'); } catch (e) { }
+        setTimeout(() => { btnTest.disabled = false; btnTest.style.opacity = '1'; }, 400);
     });
 
-    // ── Init Audio on first interaction ──────────
-    document.addEventListener('click', () => initAudio(), { once: true });
-
-    // ── Start ────────────────────────────────────
     connectSSE();
-
 })();
