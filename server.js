@@ -5,17 +5,14 @@ const path = require('path');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// ── Middleware ────────────────────────────────────────────
 app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// ── In-memory store ──────────────────────────────────────
 let commandes = [];
 let sseClients = [];
 let orderCounter = 1;
 
-// ── SSE Endpoint ─────────────────────────────────────────
 app.get('/api/events', (req, res) => {
   res.writeHead(200, {
     'Content-Type': 'text/event-stream',
@@ -24,9 +21,7 @@ app.get('/api/events', (req, res) => {
     'X-Accel-Buffering': 'no'
   });
 
-  // Send all existing commandes on connect
   res.write(`data: ${JSON.stringify({ type: 'init', commandes })}\n\n`);
-
   sseClients.push(res);
 
   req.on('close', () => {
@@ -34,45 +29,92 @@ app.get('/api/events', (req, res) => {
   });
 });
 
-// Broadcast to all SSE clients
 function broadcast(event) {
   const payload = `data: ${JSON.stringify(event)}\n\n`;
   sseClients.forEach(client => client.write(payload));
 }
 
-// ── POST /api/commande — Receive order from Make.com ─────
+// ── Helper: convertit string ou tableau en tableau propre ──
+function parseField(val, defaultVal = []) {
+  if (!val || val === 'Aucune' || val === 'Aucun' || val === '') return defaultVal;
+  if (Array.isArray(val)) return val;
+  // Si c'est une string JSON, on essaie de la parser
+  if (typeof val === 'string') {
+    try {
+      const parsed = JSON.parse(val);
+      if (Array.isArray(parsed)) return parsed;
+      return [parsed];
+    } catch (e) {
+      // Sinon on retourne la string dans un tableau
+      return [val];
+    }
+  }
+  return defaultVal;
+}
+
+// ── Helper: convertit articles string en tableau d'objets ──
+function parseArticles(val) {
+  if (!val || val === 'Aucun' || val === '') return [];
+  if (Array.isArray(val)) return val;
+  if (typeof val === 'string') {
+    try {
+      const parsed = JSON.parse(val);
+      if (Array.isArray(parsed)) return parsed;
+      // Si c'est un objet unique
+      if (typeof parsed === 'object') return [parsed];
+    } catch (e) {
+      // String simple comme "Sandwich Curry" → on crée un objet
+      return [{ nom: val, qte: 1, prix: 0 }];
+    }
+  }
+  return [];
+}
+
+// ── POST /api/commande ────────────────────────────────────
 app.post('/api/commande', (req, res) => {
   const data = req.body;
+
+  console.log('📦 Données reçues:', JSON.stringify(data, null, 2));
+
+  const articles = parseArticles(data.articles);
+  const sauces = parseField(data.sauces, []);
+  const supplements = parseField(data.supplements, []);
+  const extras = parseField(data.extras, []);
+
+  // Total : depuis les articles ou depuis data.total
+  let total = parseFloat(data.total) || 0;
+  if (total === 0 && articles.length > 0) {
+    total = articles.reduce((sum, a) => sum + (parseFloat(a.prix) || 0) * (parseInt(a.qte) || 1), 0);
+  }
 
   const commande = {
     id: data.commande_id || `CMD-${String(orderCounter++).padStart(4, '0')}`,
     timestamp: data.timestamp || new Date().toISOString(),
     received_at: new Date().toISOString(),
-    articles: data.articles || [],
-    sauces: data.sauces || [],
-    boisson: data.boisson || '',
-    supplements: data.supplements || [],
-    extras: data.extras || [],
+    articles,
+    sauces,
+    boisson: data.boisson && data.boisson !== 'Aucune' ? data.boisson : '',
+    supplements,
+    extras,
     dessert: data.dessert || '',
-    total: data.total || 0,
+    total: Math.round(total * 100) / 100,
+    nom_client: data.nom_client || '',
     canal: data.canal || 'téléphone'
   };
 
   commandes.push(commande);
   broadcast({ type: 'new', commande });
 
-  console.log(`✅ Nouvelle commande reçue: ${commande.id}`);
+  console.log(`✅ Commande enregistrée: ${commande.id} — Articles:`, commande.articles);
   res.status(201).json({ success: true, commande });
 });
 
-// ── DELETE /api/commande/:id — Mark as done ──────────────
+// ── DELETE /api/commande/:id ──────────────────────────────
 app.delete('/api/commande/:id', (req, res) => {
   const { id } = req.params;
   const index = commandes.findIndex(c => c.id === id);
 
-  if (index === -1) {
-    return res.status(404).json({ error: 'Commande introuvable' });
-  }
+  if (index === -1) return res.status(404).json({ error: 'Commande introuvable' });
 
   commandes.splice(index, 1);
   broadcast({ type: 'remove', id });
@@ -81,12 +123,12 @@ app.delete('/api/commande/:id', (req, res) => {
   res.json({ success: true });
 });
 
-// ── GET /api/commandes — List all active orders ──────────
+// ── GET /api/commandes ────────────────────────────────────
 app.get('/api/commandes', (req, res) => {
   res.json(commandes);
 });
 
-// ── GET /api/test-commande — Inject fake order ───────────
+// ── GET /api/test-commande ────────────────────────────────
 app.get('/api/test-commande', (req, res) => {
   const menus = [
     { nom: 'Menu Big Max', prix: 10.00 },
@@ -109,41 +151,28 @@ app.get('/api/test-commande', (req, res) => {
   ];
 
   const sauceOptions = ['Algérienne', 'Samouraï', 'Ketchup', 'Mayonnaise', 'BBQ', 'Biggy Burger', 'Harissa', 'Blanche'];
-  const boissonOptions = ['Coca Cola 33cl', 'Fanta Orange 33cl', 'Sprite 33cl', 'Ice Tea 33cl', 'Eau 50cl', 'Oasis Tropical 33cl', 'Pepsi 33cl'];
-  const supplementOptions = ['Cheddar', 'Bacon', 'Oeuf', 'Double Viande', 'Jalapeños', 'Oignons Crispy'];
-  const dessertOptions = ['', '', 'Sundae Caramel', 'Cookie Chocolat', 'Donut', 'Tiramisu', ''];
-  const canalOptions = ['téléphone', 'sur place'];
+  const boissonOptions = ['Coca Cola 33cl', 'Fanta Orange 33cl', 'Sprite 33cl', 'Ice Tea 33cl', 'Eau 50cl', 'Oasis Tropical 33cl'];
+  const supplementOptions = ['Cheddar', 'Bacon', 'Oeuf', 'Double Viande', 'Jalapeños'];
+  const dessertOptions = ['', '', 'Sundae Caramel', 'Cookie Chocolat', 'Tiramisu', ''];
 
-  // Random pick helpers
   const pick = arr => arr[Math.floor(Math.random() * arr.length)];
   const pickN = (arr, min, max) => {
     const n = Math.floor(Math.random() * (max - min + 1)) + min;
-    const shuffled = [...arr].sort(() => 0.5 - Math.random());
-    return shuffled.slice(0, n);
+    return [...arr].sort(() => 0.5 - Math.random()).slice(0, n);
   };
 
-  // Build random articles
   const mainItem = pick(menus);
   const articles = [{ nom: mainItem.nom, qte: 1, prix: mainItem.prix }];
-
   if (Math.random() > 0.4) {
     const side = pick(sides);
     articles.push({ nom: side.nom, qte: 1, prix: side.prix });
-  }
-  if (Math.random() > 0.7) {
-    const extra = pick(sides);
-    articles.push({ nom: extra.nom, qte: Math.random() > 0.5 ? 2 : 1, prix: extra.prix });
   }
 
   const sauces = pickN(sauceOptions, 1, 3);
   const boisson = pick(boissonOptions);
   const supplements = Math.random() > 0.5 ? pickN(supplementOptions, 1, 2) : [];
   const dessert = pick(dessertOptions);
-  const canal = pick(canalOptions);
-
-  const total = articles.reduce((sum, a) => sum + a.prix * a.qte, 0) +
-                supplements.length * 1.50 +
-                (dessert ? 3.50 : 0);
+  const total = articles.reduce((sum, a) => sum + a.prix * a.qte, 0) + supplements.length * 1.00 + (dessert ? 3.50 : 0);
 
   const commande = {
     id: `CMD-${String(orderCounter++).padStart(4, '0')}`,
@@ -156,7 +185,8 @@ app.get('/api/test-commande', (req, res) => {
     extras: [],
     dessert,
     total: Math.round(total * 100) / 100,
-    canal
+    nom_client: '',
+    canal: 'téléphone'
   };
 
   commandes.push(commande);
@@ -166,7 +196,6 @@ app.get('/api/test-commande', (req, res) => {
   res.json({ success: true, commande });
 });
 
-// ── Start ────────────────────────────────────────────────
 app.listen(PORT, () => {
   console.log(`
   ╔══════════════════════════════════════════════╗
