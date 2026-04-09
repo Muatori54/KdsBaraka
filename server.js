@@ -1,7 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
-const fs = require('fs');
+const { Redis } = require('@upstash/redis');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -9,29 +9,57 @@ const PORT = process.env.PORT || 3000;
 const SOFIA_TOKEN  = process.env.SOFIA_TOKEN  || 'echolink-sofia-2026';
 const KDS_PASSWORD = process.env.KDS_PASSWORD || 'cuisine2026';
 
-const DB_FILE = './commandes.json';
+// ── UPSTASH REDIS ─────────────────────────────────────────
+const redis = new Redis({
+  url: process.env.UPSTASH_REDIS_REST_URL,
+  token: process.env.UPSTASH_REDIS_REST_TOKEN,
+});
 
-function loadDB() {
+const REDIS_KEY_ACTIVES   = 'kds:commandes:actives';
+const REDIS_KEY_HISTORIQUE = 'kds:commandes:historique';
+
+async function loadCommandes() {
   try {
-    if (fs.existsSync(DB_FILE)) return JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
-  } catch (e) { console.log('⚠️ DB error:', e.message); }
-  return { commandes: [], historique: [] };
+    const data = await redis.get(REDIS_KEY_ACTIVES);
+    return data ? (Array.isArray(data) ? data : JSON.parse(data)) : [];
+  } catch (e) { console.log('⚠️ Redis load error:', e.message); return []; }
 }
 
-function saveDB(data) {
-  try { fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2)); }
-  catch (e) { console.log('⚠️ Save error:', e.message); }
+async function saveCommandes(commandes) {
+  try { await redis.set(REDIS_KEY_ACTIVES, JSON.stringify(commandes)); }
+  catch (e) { console.log('⚠️ Redis save error:', e.message); }
 }
 
-const db = loadDB();
-let commandes = db.commandes || [];
-let orderCounter = commandes.length + 1;
+async function addToHistorique(commande) {
+  try {
+    await redis.lpush(REDIS_KEY_HISTORIQUE, JSON.stringify(commande));
+    await redis.ltrim(REDIS_KEY_HISTORIQUE, 0, 499); // Garde 500 max
+  } catch (e) { console.log('⚠️ Redis historique error:', e.message); }
+}
+
+async function getHistorique() {
+  try {
+    const items = await redis.lrange(REDIS_KEY_HISTORIQUE, 0, 499);
+    return items.map(i => typeof i === 'string' ? JSON.parse(i) : i);
+  } catch (e) { return []; }
+}
+
+// ── INIT ──────────────────────────────────────────────────
+let commandes = [];
+let orderCounter = 1;
 let sseClients = [];
-console.log(`📂 ${commandes.length} commandes chargées`);
 
+(async () => {
+  commandes = await loadCommandes();
+  orderCounter = commandes.length + 1;
+  console.log(`📂 ${commandes.length} commandes actives chargées depuis Redis`);
+})();
+
+// ── MIDDLEWARE ────────────────────────────────────────────
 app.use(cors());
 app.use(express.json());
 
+// ── TOKEN SOFIA ───────────────────────────────────────────
 function verifyToken(req, res, next) {
   const token = req.headers['x-sofia-token'];
   if (token !== SOFIA_TOKEN) {
@@ -41,6 +69,7 @@ function verifyToken(req, res, next) {
   next();
 }
 
+// ── SSE ───────────────────────────────────────────────────
 app.get('/api/events', (req, res) => {
   res.writeHead(200, {
     'Content-Type': 'text/event-stream',
@@ -57,6 +86,7 @@ function broadcast(event) {
   sseClients.forEach(c => c.write(`data: ${JSON.stringify(event)}\n\n`));
 }
 
+// ── HELPERS ───────────────────────────────────────────────
 function parseField(val, def = []) {
   if (!val || val === 'Aucune' || val === 'Aucun' || val === '') return def;
   if (Array.isArray(val)) return val;
@@ -79,13 +109,13 @@ function parseArticles(val) {
   }
 }
 
-function extractPrixFromNom(nom) {
-  // Extrait le prix depuis "Menu Big Max 10EUR" ou "Sandwich Curry 7€"
+function extractPrix(nom) {
   const match = String(nom).match(/(\d+[.,]?\d*)\s*(?:€|EUR|euro)/i);
   return match ? parseFloat(match[1].replace(',', '.')) : 0;
 }
 
-app.post('/api/commande', verifyToken, (req, res) => {
+// ── POST /api/commande ────────────────────────────────────
+app.post('/api/commande', verifyToken, async (req, res) => {
   const data = req.body;
   console.log('📦 Reçu:', JSON.stringify(data));
 
@@ -94,22 +124,18 @@ app.post('/api/commande', verifyToken, (req, res) => {
   const supplements = parseField(data.supplements, []);
   const extras      = parseField(data.extras, []);
 
-  // Parse total — gère string, virgule française, symbole €
+  // Parse total
   let total = parseFloat(String(data.total || '0').replace(/[€\sEUReur]/gi, '').replace(',', '.').trim()) || 0;
 
-  // Fallback 1 : calculer depuis les articles si prix disponibles
+  // Fallback 1 : depuis les prix articles
   if (total === 0 && articles.length > 0) {
-    total = articles.reduce((sum, a) => sum + (parseFloat(a.prix) || 0) * (parseInt(a.qte) || 1), 0);
+    total = articles.reduce((s, a) => s + (parseFloat(a.prix) || 0) * (parseInt(a.qte) || 1), 0);
   }
 
-  // Fallback 2 : extraire le prix depuis le nom de l'article (ex: "Menu Big Max 10EUR")
+  // Fallback 2 : extraire depuis le nom ("Menu Big Max 10EUR")
   if (total === 0 && articles.length > 0) {
-    articles.forEach(a => {
-      if (!a.prix || a.prix === 0) {
-        a.prix = extractPrixFromNom(a.nom);
-      }
-    });
-    total = articles.reduce((sum, a) => sum + (parseFloat(a.prix) || 0) * (parseInt(a.qte) || 1), 0);
+    articles.forEach(a => { if (!a.prix || a.prix === 0) a.prix = extractPrix(a.nom); });
+    total = articles.reduce((s, a) => s + (parseFloat(a.prix) || 0) * (parseInt(a.qte) || 1), 0);
   }
 
   const commande = {
@@ -127,42 +153,38 @@ app.post('/api/commande', verifyToken, (req, res) => {
   };
 
   commandes.push(commande);
-  const dbData = loadDB();
-  dbData.commandes = commandes;
-  dbData.historique = dbData.historique || [];
-  dbData.historique.unshift({ ...commande, saved_at: new Date().toISOString() });
-  if (dbData.historique.length > 500) dbData.historique = dbData.historique.slice(0, 500);
-  saveDB(dbData);
+  await saveCommandes(commandes);
+  await addToHistorique(commande);
 
   broadcast({ type: 'new', commande });
-  console.log(`✅ ${commande.id} — Total: ${commande.total}€`);
+  console.log(`✅ ${commande.id} — ${commande.total}€ — sauvegardé Redis`);
   res.status(201).json({ success: true, commande });
 });
 
-app.delete('/api/commande/:id', (req, res) => {
+// ── DELETE /api/commande/:id ──────────────────────────────
+app.delete('/api/commande/:id', async (req, res) => {
   const { id } = req.params;
   const index = commandes.findIndex(c => c.id === id);
   if (index === -1) return res.status(404).json({ error: 'Introuvable' });
 
-  const dbData = loadDB();
-  const h = dbData.historique?.find(c => c.id === id);
-  if (h) h.statut = 'terminee';
-  dbData.commandes = (dbData.commandes || []).filter(c => c.id !== id);
-  saveDB(dbData);
-
   commandes.splice(index, 1);
+  await saveCommandes(commandes);
+
   broadcast({ type: 'remove', id });
   console.log(`✅ ${id} terminé`);
   res.json({ success: true });
 });
 
+// ── GET /api/commandes ────────────────────────────────────
 app.get('/api/commandes', (req, res) => res.json(commandes));
 
-app.get('/api/historique', (req, res) => {
-  res.json(loadDB().historique || []);
+// ── GET /api/historique ───────────────────────────────────
+app.get('/api/historique', async (req, res) => {
+  res.json(await getHistorique());
 });
 
-app.get('/api/test-commande', (req, res) => {
+// ── GET /api/test-commande ────────────────────────────────
+app.get('/api/test-commande', async (req, res) => {
   const menus = [
     { nom: 'Menu Big Max', prix: 10 },
     { nom: 'Menu Chicken Deluxe', prix: 11.50 },
@@ -209,23 +231,18 @@ app.get('/api/test-commande', (req, res) => {
   };
 
   commandes.push(commande);
-  const dbData = loadDB();
-  dbData.commandes = commandes;
-  dbData.historique = dbData.historique || [];
-  dbData.historique.unshift({ ...commande, saved_at: new Date().toISOString() });
-  if (dbData.historique.length > 500) dbData.historique = dbData.historique.slice(0, 500);
-  saveDB(dbData);
+  await saveCommandes(commandes);
+  await addToHistorique(commande);
 
   broadcast({ type: 'new', commande });
   console.log(`🧪 Test: ${commande.id} — ${commande.total}€`);
   res.json({ success: true, commande });
 });
 
-// ── AUTH KDS (après les routes API) ──────────────────────
+// ── AUTH KDS ──────────────────────────────────────────────
 app.use((req, res, next) => {
   if (req.path === '/' || req.path === '/index.html') {
-    const token = req.query.token;
-    if (token !== KDS_PASSWORD) {
+    if (req.query.token !== KDS_PASSWORD) {
       return res.status(401).send(`
         <html><body style="font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;background:#0f0f0f">
         <div style="background:#1a1a1a;padding:40px;border-radius:12px;text-align:center;color:#fff">
@@ -249,8 +266,10 @@ app.use((req, res, next) => {
 
 app.use(express.static(path.join(__dirname, 'public')));
 
+// ── START ─────────────────────────────────────────────────
 app.listen(PORT, () => {
   console.log(`🍔 KDS démarré — port ${PORT}`);
   console.log(`🌐 http://localhost:${PORT}/?token=${KDS_PASSWORD}`);
   console.log(`🔐 Sofia token: ${SOFIA_TOKEN}`);
+  console.log(`🗄️  Redis: ${process.env.UPSTASH_REDIS_REST_URL ? 'connecté' : '⚠️ URL manquante'}`);
 });
