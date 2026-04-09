@@ -1,53 +1,46 @@
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
-const Database = require('better-sqlite3');
+const fs = require('fs');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 // ── CONFIG SECURITE ───────────────────────────────────────
-const SOFIA_TOKEN = process.env.SOFIA_TOKEN || 'echolink-sofia-2026';
+const SOFIA_TOKEN  = process.env.SOFIA_TOKEN  || 'echolink-sofia-2026';
 const KDS_PASSWORD = process.env.KDS_PASSWORD || 'cuisine2026';
 
-// ── SQLITE ────────────────────────────────────────────────
-const db = new Database('./commandes.db');
+// ── PERSISTANCE JSON (pas de compilation native) ──────────
+const DB_FILE = './commandes.json';
 
-db.exec(`
-  CREATE TABLE IF NOT EXISTS commandes (
-    id TEXT PRIMARY KEY,
-    timestamp TEXT,
-    received_at TEXT,
-    articles TEXT,
-    sauces TEXT,
-    boisson TEXT,
-    supplements TEXT,
-    extras TEXT,
-    dessert TEXT,
-    total REAL,
-    nom_client TEXT,
-    canal TEXT,
-    statut TEXT DEFAULT 'active'
-  )
-`);
+function loadDB() {
+  try {
+    if (fs.existsSync(DB_FILE)) {
+      const raw = fs.readFileSync(DB_FILE, 'utf8');
+      return JSON.parse(raw);
+    }
+  } catch (e) { console.log('⚠️ Erreur lecture DB:', e.message); }
+  return { commandes: [], historique: [] };
+}
 
-let commandes = db.prepare("SELECT * FROM commandes WHERE statut = 'active'").all().map(row => ({
-  ...row,
-  articles: JSON.parse(row.articles || '[]'),
-  sauces: JSON.parse(row.sauces || '[]'),
-  supplements: JSON.parse(row.supplements || '[]'),
-  extras: JSON.parse(row.extras || '[]'),
-}));
+function saveDB(data) {
+  try { fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2)); }
+  catch (e) { console.log('⚠️ Erreur sauvegarde DB:', e.message); }
+}
 
-let sseClients = [];
+// Charge les données au démarrage
+const db = loadDB();
+let commandes = db.commandes || [];
 let orderCounter = commandes.length + 1;
-console.log(`📂 ${commandes.length} commandes actives chargées depuis SQLite`);
+let sseClients = [];
+
+console.log(`📂 ${commandes.length} commandes actives chargées`);
 
 // ── MIDDLEWARE ────────────────────────────────────────────
 app.use(cors());
 app.use(express.json());
 
-// FIX 3 — Auth KDS via query param ?token=
+// FIX 3 — Auth KDS
 app.use((req, res, next) => {
   if (req.path.startsWith('/api/')) return next();
   if (req.path === '/' || req.path === '/index.html') {
@@ -56,13 +49,14 @@ app.use((req, res, next) => {
       return res.status(401).send(`
         <html><body style="font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;background:#0f0f0f">
         <div style="background:#1a1a1a;padding:40px;border-radius:12px;text-align:center;color:#fff">
-          <h2 style="color:#f5a623">KDS El Baraka</h2>
-          <p style="color:#999">Acces cuisine</p>
+          <h2 style="color:#f5a623">🍔 KDS El Baraka</h2>
+          <p style="color:#999;margin-bottom:20px">Acces cuisine requis</p>
           <form method="GET">
             <input type="password" name="token" placeholder="Mot de passe"
-              style="padding:10px;border-radius:6px;border:1px solid #333;background:#111;color:#fff;width:200px;margin:10px 0">
-            <br><button type="submit"
-              style="padding:10px 24px;background:#f5a623;color:#000;border:none;border-radius:6px;cursor:pointer;font-weight:bold">
+              style="padding:12px;border-radius:6px;border:1px solid #333;background:#111;color:#fff;width:220px;font-size:16px">
+            <br><br>
+            <button type="submit"
+              style="padding:12px 28px;background:#f5a623;color:#000;border:none;border-radius:6px;cursor:pointer;font-weight:bold;font-size:16px">
               Entrer
             </button>
           </form>
@@ -97,7 +91,7 @@ function broadcast(event) {
 function verifyToken(req, res, next) {
   const token = req.headers['x-sofia-token'];
   if (token !== SOFIA_TOKEN) {
-    console.log(`❌ Token invalide: "${token}" — rejeté depuis ${req.ip}`);
+    console.log(`❌ Token invalide: "${token}" — rejeté`);
     return res.status(401).json({ error: 'Non autorisé' });
   }
   next();
@@ -134,7 +128,7 @@ function parseArticles(val) {
   return [];
 }
 
-// ── POST /api/commande ────────────────────────────────────
+// ── POST /api/commande — protégé par token ───────────────
 app.post('/api/commande', verifyToken, (req, res) => {
   const data = req.body;
   console.log('📦 Commande reçue:', JSON.stringify(data, null, 2));
@@ -160,26 +154,22 @@ app.post('/api/commande', verifyToken, (req, res) => {
     dessert: data.dessert || '',
     total: Math.round(total * 100) / 100,
     nom_client: data.nom_client || '',
-    canal: data.canal || 'téléphone'
+    canal: data.canal || 'téléphone',
+    statut: 'active'
   };
 
-  // FIX 2 — Sauvegarde SQLite
-  db.prepare(`
-    INSERT OR REPLACE INTO commandes
-    (id, timestamp, received_at, articles, sauces, boisson, supplements, extras, dessert, total, nom_client, canal, statut)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')
-  `).run(
-    commande.id, commande.timestamp, commande.received_at,
-    JSON.stringify(commande.articles), JSON.stringify(commande.sauces),
-    commande.boisson, JSON.stringify(commande.supplements),
-    JSON.stringify(commande.extras), commande.dessert,
-    commande.total, commande.nom_client, commande.canal
-  );
-
+  // FIX 2 — Sauvegarde JSON
   commandes.push(commande);
-  broadcast({ type: 'new', commande });
+  const dbData = loadDB();
+  dbData.commandes = commandes;
+  dbData.historique = dbData.historique || [];
+  dbData.historique.unshift({ ...commande, saved_at: new Date().toISOString() });
+  // Garde seulement les 500 derniers dans l'historique
+  if (dbData.historique.length > 500) dbData.historique = dbData.historique.slice(0, 500);
+  saveDB(dbData);
 
-  console.log(`✅ Commande sauvegardée (RAM + SQLite): ${commande.id}`);
+  broadcast({ type: 'new', commande });
+  console.log(`✅ Commande sauvegardée: ${commande.id}`);
   res.status(201).json({ success: true, commande });
 });
 
@@ -189,10 +179,15 @@ app.delete('/api/commande/:id', (req, res) => {
   const index = commandes.findIndex(c => c.id === id);
   if (index === -1) return res.status(404).json({ error: 'Commande introuvable' });
 
-  db.prepare("UPDATE commandes SET statut = 'terminee' WHERE id = ?").run(id);
+  // Marquer comme terminée dans le fichier JSON
+  const dbData = loadDB();
+  const cmdInHistory = dbData.historique?.find(c => c.id === id);
+  if (cmdInHistory) cmdInHistory.statut = 'terminee';
+  dbData.commandes = dbData.commandes?.filter(c => c.id !== id) || [];
+  saveDB(dbData);
+
   commandes.splice(index, 1);
   broadcast({ type: 'remove', id });
-
   console.log(`✅ Commande terminée: ${id}`);
   res.json({ success: true });
 });
@@ -202,17 +197,8 @@ app.get('/api/commandes', (req, res) => { res.json(commandes); });
 
 // ── GET /api/historique ───────────────────────────────────
 app.get('/api/historique', (req, res) => {
-  const today = new Date().toISOString().slice(0, 10);
-  const rows = db.prepare("SELECT * FROM commandes WHERE received_at LIKE ? ORDER BY received_at DESC")
-    .all(`${today}%`)
-    .map(row => ({
-      ...row,
-      articles: JSON.parse(row.articles || '[]'),
-      sauces: JSON.parse(row.sauces || '[]'),
-      supplements: JSON.parse(row.supplements || '[]'),
-      extras: JSON.parse(row.extras || '[]'),
-    }));
-  res.json(rows);
+  const dbData = loadDB();
+  res.json(dbData.historique || []);
 });
 
 // ── GET /api/test-commande ────────────────────────────────
@@ -245,7 +231,8 @@ app.get('/api/test-commande', (req, res) => {
   const boisson     = pick(boissonOpts);
   const supplements = Math.random() > 0.5 ? pickN(suppOpts, 1, 2) : [];
   const dessert     = pick(dessertOpts);
-  const total       = articles.reduce((s, a) => s + a.prix * a.qte, 0) + supplements.length + (dessert ? 3.50 : 0);
+  const total       = articles.reduce((s, a) => s + a.prix * a.qte, 0)
+                    + supplements.length + (dessert ? 3.50 : 0);
 
   const commande = {
     id: `CMD-${String(orderCounter++).padStart(4, '0')}`,
@@ -254,22 +241,17 @@ app.get('/api/test-commande', (req, res) => {
     articles, sauces, boisson, supplements,
     extras: [], dessert,
     total: Math.round(total * 100) / 100,
-    nom_client: '', canal: 'téléphone'
+    nom_client: '', canal: 'téléphone', statut: 'active'
   };
 
-  db.prepare(`
-    INSERT OR REPLACE INTO commandes
-    (id, timestamp, received_at, articles, sauces, boisson, supplements, extras, dessert, total, nom_client, canal, statut)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')
-  `).run(
-    commande.id, commande.timestamp, commande.received_at,
-    JSON.stringify(commande.articles), JSON.stringify(commande.sauces),
-    commande.boisson, JSON.stringify(commande.supplements),
-    JSON.stringify(commande.extras), commande.dessert,
-    commande.total, commande.nom_client, commande.canal
-  );
-
   commandes.push(commande);
+  const dbData = loadDB();
+  dbData.commandes = commandes;
+  dbData.historique = dbData.historique || [];
+  dbData.historique.unshift({ ...commande, saved_at: new Date().toISOString() });
+  if (dbData.historique.length > 500) dbData.historique = dbData.historique.slice(0, 500);
+  saveDB(dbData);
+
   broadcast({ type: 'new', commande });
   console.log(`🧪 Test: ${commande.id}`);
   res.json({ success: true, commande });
@@ -280,10 +262,10 @@ app.listen(PORT, () => {
   console.log(`
   ╔══════════════════════════════════════════════╗
   ║   🍔  KDS EL BARAKA — Kitchen Display       ║
-  ║   🌐  http://localhost:${PORT}?token=cuisine2026 ║
+  ║   🌐  http://localhost:${PORT}/?token=cuisine2026 ║
   ║   📡  Webhook: POST /api/commande            ║
   ║   🔐  X-Sofia-Token requis                   ║
-  ║   🗄️  SQLite: commandes.db                   ║
+  ║   🗄️  Persistance: commandes.json            ║
   ╚══════════════════════════════════════════════╝
   `);
 });
