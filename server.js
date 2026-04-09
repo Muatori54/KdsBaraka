@@ -29,11 +29,9 @@ let orderCounter = commandes.length + 1;
 let sseClients = [];
 console.log(`📂 ${commandes.length} commandes chargées`);
 
-// ── MIDDLEWARE DE BASE ────────────────────────────────────
 app.use(cors());
 app.use(express.json());
 
-// ── FIX TOKEN SOFIA (API uniquement) ─────────────────────
 function verifyToken(req, res, next) {
   const token = req.headers['x-sofia-token'];
   if (token !== SOFIA_TOKEN) {
@@ -43,7 +41,6 @@ function verifyToken(req, res, next) {
   next();
 }
 
-// ── ROUTES API ────────────────────────────────────────────
 app.get('/api/events', (req, res) => {
   res.writeHead(200, {
     'Content-Type': 'text/event-stream',
@@ -76,10 +73,16 @@ function parseArticles(val) {
   if (Array.isArray(val)) return val;
   try {
     const p = JSON.parse(val);
-    return Array.isArray(p) ? p : typeof p === 'object' ? [p] : [{ nom: val, qte: 1, prix: 0 }];
+    return Array.isArray(p) ? p : typeof p === 'object' ? [p] : [{ nom: String(val), qte: 1, prix: 0 }];
   } catch {
-    return [{ nom: val, qte: 1, prix: 0 }];
+    return [{ nom: String(val), qte: 1, prix: 0 }];
   }
+}
+
+function extractPrixFromNom(nom) {
+  // Extrait le prix depuis "Menu Big Max 10EUR" ou "Sandwich Curry 7€"
+  const match = String(nom).match(/(\d+[.,]?\d*)\s*(?:€|EUR|euro)/i);
+  return match ? parseFloat(match[1].replace(',', '.')) : 0;
 }
 
 app.post('/api/commande', verifyToken, (req, res) => {
@@ -91,9 +94,23 @@ app.post('/api/commande', verifyToken, (req, res) => {
   const supplements = parseField(data.supplements, []);
   const extras      = parseField(data.extras, []);
 
-  let total = parseFloat(String(data.total || '0').replace(/[€\s]/g, '').replace(',', '.')) || 0;
-  if (total === 0 && articles.length > 0)
-    total = articles.reduce((s, a) => s + (parseFloat(a.prix) || 0) * (parseInt(a.qte) || 1), 0);
+  // Parse total — gère string, virgule française, symbole €
+  let total = parseFloat(String(data.total || '0').replace(/[€\sEUReur]/gi, '').replace(',', '.').trim()) || 0;
+
+  // Fallback 1 : calculer depuis les articles si prix disponibles
+  if (total === 0 && articles.length > 0) {
+    total = articles.reduce((sum, a) => sum + (parseFloat(a.prix) || 0) * (parseInt(a.qte) || 1), 0);
+  }
+
+  // Fallback 2 : extraire le prix depuis le nom de l'article (ex: "Menu Big Max 10EUR")
+  if (total === 0 && articles.length > 0) {
+    articles.forEach(a => {
+      if (!a.prix || a.prix === 0) {
+        a.prix = extractPrixFromNom(a.nom);
+      }
+    });
+    total = articles.reduce((sum, a) => sum + (parseFloat(a.prix) || 0) * (parseInt(a.qte) || 1), 0);
+  }
 
   const commande = {
     id: data.commande_id || `CMD-${String(orderCounter++).padStart(4, '0')}`,
@@ -118,7 +135,7 @@ app.post('/api/commande', verifyToken, (req, res) => {
   saveDB(dbData);
 
   broadcast({ type: 'new', commande });
-  console.log(`✅ ${commande.id} sauvegardé`);
+  console.log(`✅ ${commande.id} — Total: ${commande.total}€`);
   res.status(201).json({ success: true, commande });
 });
 
@@ -147,30 +164,48 @@ app.get('/api/historique', (req, res) => {
 
 app.get('/api/test-commande', (req, res) => {
   const menus = [
-    { nom: 'Menu Big Max', prix: 10 }, { nom: 'Menu Chicken Deluxe', prix: 11.50 },
-    { nom: 'Menu Fish Burger', prix: 10.50 }, { nom: 'Tacos L', prix: 8 }, { nom: 'Tacos XL', prix: 10 }
+    { nom: 'Menu Big Max', prix: 10 },
+    { nom: 'Menu Chicken Deluxe', prix: 11.50 },
+    { nom: 'Menu Fish Burger', prix: 10.50 },
+    { nom: 'Tacos L', prix: 8 },
+    { nom: 'Tacos XL', prix: 10 },
+    { nom: 'Menu Sandwich Tandoori', prix: 9 },
+    { nom: 'Menu Sandwich Kefta', prix: 9 },
+    { nom: 'Menu Sandwich Baraka 1', prix: 9.50 }
   ];
   const sides = [
-    { nom: 'Chicken Wings x6', prix: 6 }, { nom: 'Onion Rings x8', prix: 4.50 }, { nom: 'Nuggets x6', prix: 5 }
+    { nom: 'Chicken Wings x6', prix: 6 },
+    { nom: 'Onion Rings x8', prix: 4.50 },
+    { nom: 'Nuggets x6', prix: 5 },
+    { nom: 'Frites', prix: 2.50 }
   ];
   const pick  = arr => arr[Math.floor(Math.random() * arr.length)];
-  const pickN = (arr, mn, mx) => [...arr].sort(() => .5 - Math.random()).slice(0, mn + Math.floor(Math.random() * (mx - mn + 1)));
+  const pickN = (arr, mn, mx) => [...arr].sort(() => .5 - Math.random())
+    .slice(0, mn + Math.floor(Math.random() * (mx - mn + 1)));
 
   const main     = pick(menus);
   const articles = [{ nom: main.nom, qte: 1, prix: main.prix }];
-  if (Math.random() > .4) { const s = pick(sides); articles.push({ nom: s.nom, qte: 1, prix: s.prix }); }
+  if (Math.random() > .4) {
+    const s = pick(sides);
+    articles.push({ nom: s.nom, qte: 1, prix: s.prix });
+  }
 
-  const sauces      = pickN(['Algérienne','Samouraï','Ketchup','BBQ','Harissa'], 1, 3);
-  const boisson     = pick(['Coca Cola 33cl','Fanta Orange 33cl','Sprite 33cl','Ice Tea 33cl']);
-  const supplements = Math.random() > .5 ? pickN(['Cheddar','Bacon','Jalapeños'], 1, 2) : [];
-  const dessert     = pick(['','','Sundae Caramel','Tiramisu','']);
-  const total       = articles.reduce((s, a) => s + a.prix * a.qte, 0) + supplements.length + (dessert ? 3.5 : 0);
+  const sauces      = pickN(['Algérienne','Samouraï','Ketchup','BBQ','Harissa','Blanche'], 1, 3);
+  const boisson     = pick(['Coca Cola 33cl','Fanta Orange 33cl','Sprite 33cl','Ice Tea 33cl','Oasis Tropical 33cl']);
+  const supplements = Math.random() > .5 ? pickN(['Cheddar','Bacon','Jalapeños','Emmental'], 1, 2) : [];
+  const dessert     = pick(['','','Tiramisu Oreo','Milkshake Vanille','Tarte aux Daims','']);
+  const total       = articles.reduce((s, a) => s + a.prix * a.qte, 0)
+                    + supplements.length * 1
+                    + (dessert ? 3.5 : 0);
 
   const commande = {
     id: `CMD-${String(orderCounter++).padStart(4, '0')}`,
-    timestamp: new Date().toISOString(), received_at: new Date().toISOString(),
-    articles, sauces, boisson, supplements, extras: [], dessert,
-    total: Math.round(total * 100) / 100, nom_client: '', canal: 'téléphone', statut: 'active'
+    timestamp: new Date().toISOString(),
+    received_at: new Date().toISOString(),
+    articles, sauces, boisson, supplements,
+    extras: [], dessert,
+    total: Math.round(total * 100) / 100,
+    nom_client: '', canal: 'téléphone / Sofia', statut: 'active'
   };
 
   commandes.push(commande);
@@ -182,11 +217,11 @@ app.get('/api/test-commande', (req, res) => {
   saveDB(dbData);
 
   broadcast({ type: 'new', commande });
-  console.log(`🧪 Test: ${commande.id}`);
+  console.log(`🧪 Test: ${commande.id} — ${commande.total}€`);
   res.json({ success: true, commande });
 });
 
-// ── STATIC + AUTH KDS (après les routes API) ─────────────
+// ── AUTH KDS (après les routes API) ──────────────────────
 app.use((req, res, next) => {
   if (req.path === '/' || req.path === '/index.html') {
     const token = req.query.token;
@@ -200,7 +235,8 @@ app.use((req, res, next) => {
             <input type="password" name="token" placeholder="Mot de passe"
               style="padding:12px;border-radius:6px;border:1px solid #333;background:#111;color:#fff;width:220px;font-size:16px">
             <br><br>
-            <button type="submit" style="padding:12px 28px;background:#f5a623;color:#000;border:none;border-radius:6px;cursor:pointer;font-weight:bold;font-size:16px">
+            <button type="submit"
+              style="padding:12px 28px;background:#f5a623;color:#000;border:none;border-radius:6px;cursor:pointer;font-weight:bold;font-size:16px">
               Entrer
             </button>
           </form>
@@ -213,9 +249,8 @@ app.use((req, res, next) => {
 
 app.use(express.static(path.join(__dirname, 'public')));
 
-// ── START ─────────────────────────────────────────────────
 app.listen(PORT, () => {
-  console.log(`🍔 KDS démarré sur le port ${PORT}`);
+  console.log(`🍔 KDS démarré — port ${PORT}`);
   console.log(`🌐 http://localhost:${PORT}/?token=${KDS_PASSWORD}`);
-  console.log(`🔐 Token Sofia: ${SOFIA_TOKEN}`);
+  console.log(`🔐 Sofia token: ${SOFIA_TOKEN}`);
 });
