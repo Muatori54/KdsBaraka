@@ -1,0 +1,1189 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Echo-Link Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0a0a;
+    --surface: #121212;
+    --surface2: #1a1a1a;
+    --border: #2a2a2a;
+    --border2: #333;
+    --orange: #ff5c1a;
+    --orange-dim: rgba(255,92,26,0.12);
+    --orange-glow: rgba(255,92,26,0.3);
+    --green: #00e676;
+    --green-dim: rgba(0,230,118,0.1);
+    --red: #ff3d3d;
+    --yellow: #ffd600;
+    --text: #f0f0f0;
+    --text-dim: #888;
+    --text-faint: #444;
+    --mono: 'DM Mono', monospace;
+    --sans: 'Syne', sans-serif;
+    --radius: 10px;
+  }
+
+  * { margin:0; padding:0; box-sizing:border-box; }
+
+  body {
+    font-family: var(--sans);
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* ── LAYOUT ── */
+  #app { display: flex; min-height: 100vh; }
+
+  /* ── SIDEBAR ── */
+  #sidebar {
+    width: 220px;
+    min-height: 100vh;
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    position: fixed;
+    top: 0; left: 0; bottom: 0;
+    z-index: 100;
+    transition: transform 0.3s ease;
+  }
+
+  .sidebar-logo {
+    padding: 24px 20px 20px;
+    border-bottom: 1px solid var(--border);
+  }
+  .sidebar-logo .brand {
+    font-family: var(--sans);
+    font-weight: 800;
+    font-size: 18px;
+    color: var(--orange);
+    letter-spacing: -0.5px;
+  }
+  .sidebar-logo .slug-badge {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text-dim);
+    margin-top: 4px;
+    background: var(--border);
+    padding: 2px 8px;
+    border-radius: 4px;
+    display: inline-block;
+  }
+
+  .sidebar-nav {
+    flex: 1;
+    padding: 16px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .nav-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    border-radius: var(--radius);
+    cursor: pointer;
+    transition: all 0.15s;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-dim);
+    border: 1px solid transparent;
+  }
+  .nav-item:hover { background: var(--surface2); color: var(--text); }
+  .nav-item.active {
+    background: var(--orange-dim);
+    color: var(--orange);
+    border-color: rgba(255,92,26,0.2);
+  }
+  .nav-icon { font-size: 16px; width: 20px; text-align: center; }
+
+  .sidebar-footer {
+    padding: 16px;
+    border-top: 1px solid var(--border);
+  }
+  .status-dot {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text-dim);
+  }
+  .dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: var(--text-faint);
+  }
+  .dot.live { background: var(--green); box-shadow: 0 0 6px var(--green); animation: pulse 2s infinite; }
+
+  @keyframes pulse {
+    0%,100% { opacity:1; } 50% { opacity:0.4; }
+  }
+
+  /* ── MAIN ── */
+  #main {
+    margin-left: 220px;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+  }
+
+  /* ── TOPBAR ── */
+  #topbar {
+    padding: 16px 28px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: var(--surface);
+    position: sticky;
+    top: 0;
+    z-index: 50;
+  }
+
+  .topbar-title {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--text);
+  }
+  .topbar-actions {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+  }
+
+  .btn {
+    font-family: var(--sans);
+    font-size: 12px;
+    font-weight: 700;
+    padding: 8px 16px;
+    border-radius: 8px;
+    border: 1px solid var(--border2);
+    cursor: pointer;
+    transition: all 0.15s;
+    background: var(--surface2);
+    color: var(--text-dim);
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+  }
+  .btn:hover { background: var(--border); color: var(--text); }
+  .btn.primary {
+    background: var(--orange);
+    border-color: var(--orange);
+    color: #fff;
+  }
+  .btn.primary:hover { background: #e04d14; box-shadow: 0 0 16px var(--orange-glow); }
+  .btn.success {
+    background: var(--green-dim);
+    border-color: var(--green);
+    color: var(--green);
+  }
+  .btn.danger { border-color: var(--red); color: var(--red); }
+
+  /* ── PAGES ── */
+  .page { display: none; padding: 28px; animation: fadeIn 0.2s ease; }
+  .page.active { display: block; }
+
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  /* ── STATS CARDS ── */
+  .stats-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+    margin-bottom: 28px;
+  }
+
+  .stat-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px;
+    position: relative;
+    overflow: hidden;
+    transition: border-color 0.2s;
+  }
+  .stat-card:hover { border-color: var(--border2); }
+  .stat-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: var(--orange);
+    opacity: 0;
+    transition: opacity 0.2s;
+  }
+  .stat-card:hover::before { opacity: 1; }
+
+  .stat-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--text-dim);
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    margin-bottom: 10px;
+  }
+  .stat-value {
+    font-size: 28px;
+    font-weight: 800;
+    color: var(--text);
+    line-height: 1;
+  }
+  .stat-value.orange { color: var(--orange); }
+  .stat-value.green  { color: var(--green); }
+  .stat-sub {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--text-faint);
+    margin-top: 6px;
+  }
+
+  /* ── SECTION HEADER ── */
+  .section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 16px;
+  }
+  .section-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+
+  /* ── COMMANDES GRID ── */
+  #commandes-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 16px;
+  }
+
+  .commande-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 18px;
+    transition: all 0.3s;
+    animation: slideIn 0.3s ease;
+  }
+  .commande-card:hover { border-color: var(--orange); }
+  .commande-card.terminee {
+    opacity: 0.4;
+    border-color: var(--green);
+    background: var(--green-dim);
+  }
+
+  @keyframes slideIn {
+    from { opacity:0; transform: scale(0.95) translateY(-8px); }
+    to   { opacity:1; transform: scale(1) translateY(0); }
+  }
+
+  .card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 12px;
+  }
+  .card-id {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--text-faint);
+  }
+  .card-time {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--orange);
+    font-weight: 500;
+  }
+  .card-timer {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--yellow);
+    font-weight: 500;
+    margin-top: 2px;
+    text-align: right;
+  }
+  .card-timer.urgent { color: var(--red); animation: blink 0.7s infinite; }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+  .card-articles {
+    list-style: none;
+    margin-bottom: 14px;
+  }
+  .card-articles li {
+    font-size: 13px;
+    color: var(--text);
+    padding: 4px 0;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .card-articles li::before {
+    content: '▸';
+    color: var(--orange);
+    font-size: 10px;
+    flex-shrink: 0;
+  }
+  .card-articles li:last-child { border-bottom: none; }
+
+  .card-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 12px;
+  }
+  .card-total {
+    font-family: var(--mono);
+    font-size: 18px;
+    font-weight: 500;
+    color: var(--text);
+  }
+
+  .empty-state {
+    grid-column: 1/-1;
+    text-align: center;
+    padding: 60px 20px;
+    color: var(--text-faint);
+    font-size: 13px;
+    border: 1px dashed var(--border);
+    border-radius: var(--radius);
+  }
+  .empty-icon { font-size: 40px; margin-bottom: 12px; }
+
+  /* ── CUISINE FULLSCREEN ── */
+  #page-cuisine {
+    background: #000;
+    min-height: calc(100vh - 57px);
+  }
+  #page-cuisine .stats-grid { display: none; }
+
+  #cuisine-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 20px;
+    padding: 20px 28px;
+  }
+
+  .cuisine-card {
+    background: var(--surface);
+    border: 2px solid var(--border);
+    border-radius: 12px;
+    padding: 22px;
+    animation: slideIn 0.3s ease;
+    transition: all 0.2s;
+  }
+  .cuisine-card:hover { border-color: var(--orange); }
+  .cuisine-card.terminee { border-color: var(--green); background: rgba(0,230,118,0.05); opacity: 0.6; }
+
+  .cuisine-card .card-articles li {
+    font-size: 15px;
+    padding: 7px 0;
+  }
+  .cuisine-btn-done {
+    width: 100%;
+    padding: 12px;
+    background: var(--green);
+    border: none;
+    border-radius: 8px;
+    color: #000;
+    font-family: var(--sans);
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.15s;
+    margin-top: 14px;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+  }
+  .cuisine-btn-done:hover { background: #00c864; }
+  .cuisine-btn-done:disabled { background: var(--border); color: var(--text-faint); cursor: default; }
+
+  /* ── HISTORIQUE TABLE ── */
+  .hist-filters {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    margin-bottom: 20px;
+  }
+  .hist-filters input[type="date"] {
+    font-family: var(--mono);
+    font-size: 13px;
+    background: var(--surface);
+    border: 1px solid var(--border2);
+    color: var(--text);
+    padding: 8px 14px;
+    border-radius: 8px;
+    outline: none;
+    cursor: pointer;
+  }
+  .hist-filters input:focus { border-color: var(--orange); }
+
+  .table-wrap {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+  thead tr {
+    background: var(--surface2);
+    border-bottom: 1px solid var(--border);
+  }
+  th {
+    padding: 12px 16px;
+    text-align: left;
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--text-dim);
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    font-weight: 500;
+  }
+  td {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 12px;
+  }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: var(--surface2); }
+
+  .badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .badge.active  { background: var(--orange-dim); color: var(--orange); border: 1px solid rgba(255,92,26,0.3); }
+  .badge.done    { background: var(--green-dim); color: var(--green); border: 1px solid rgba(0,230,118,0.3); }
+
+  /* ── MENU EDITOR ── */
+  .menu-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+  }
+  .menu-list {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px;
+  }
+  .menu-item-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .menu-item-row:last-child { border-bottom: none; }
+
+  .menu-input {
+    font-family: var(--mono);
+    font-size: 12px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 6px 10px;
+    border-radius: 6px;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  .menu-input:focus { border-color: var(--orange); }
+  .menu-input.name { flex: 1; }
+  .menu-input.price { width: 80px; }
+
+  .toggle-switch {
+    position: relative;
+    width: 36px;
+    height: 20px;
+    flex-shrink: 0;
+  }
+  .toggle-switch input { opacity: 0; width: 0; height: 0; }
+  .toggle-slider {
+    position: absolute;
+    inset: 0;
+    background: var(--border2);
+    border-radius: 20px;
+    cursor: pointer;
+    transition: 0.2s;
+  }
+  .toggle-slider::before {
+    content: '';
+    position: absolute;
+    width: 14px; height: 14px;
+    left: 3px; top: 3px;
+    background: #fff;
+    border-radius: 50%;
+    transition: 0.2s;
+  }
+  input:checked + .toggle-slider { background: var(--orange); }
+  input:checked + .toggle-slider::before { transform: translateX(16px); }
+
+  .del-btn {
+    background: none;
+    border: none;
+    color: var(--text-faint);
+    cursor: pointer;
+    font-size: 16px;
+    padding: 4px;
+    transition: color 0.15s;
+    line-height: 1;
+  }
+  .del-btn:hover { color: var(--red); }
+
+  .add-form {
+    display: flex;
+    gap: 10px;
+    margin-top: 14px;
+    padding-top: 14px;
+    border-top: 1px solid var(--border);
+  }
+
+  /* ── NOTIFICATION TOAST ── */
+  #toast {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 14px 20px;
+    font-size: 13px;
+    color: var(--text);
+    box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+    z-index: 1000;
+    display: none;
+    max-width: 320px;
+    animation: toastIn 0.3s ease;
+    border-left: 3px solid var(--orange);
+  }
+  #toast.show { display: flex; align-items: center; gap: 10px; }
+  @keyframes toastIn {
+    from { opacity:0; transform: translateY(16px); }
+    to   { opacity:1; transform: translateY(0); }
+  }
+
+  /* ── MOBILE TOPBAR ── */
+  #mobile-menu-btn {
+    display: none;
+    background: none;
+    border: none;
+    color: var(--text);
+    font-size: 22px;
+    cursor: pointer;
+  }
+
+  /* ── RESPONSIVE ── */
+  @media (max-width: 900px) {
+    #sidebar { transform: translateX(-100%); }
+    #sidebar.open { transform: translateX(0); }
+    #main { margin-left: 0; }
+    #mobile-menu-btn { display: block; }
+    .stats-grid { grid-template-columns: 1fr 1fr; }
+    .menu-grid { grid-template-columns: 1fr; }
+  }
+  @media (max-width: 600px) {
+    .stats-grid { grid-template-columns: 1fr; }
+    #cuisine-grid { grid-template-columns: 1fr; }
+    .page { padding: 16px; }
+  }
+
+  /* ── OVERLAY MOBILE ── */
+  #sidebar-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.7);
+    z-index: 99;
+  }
+  #sidebar-overlay.show { display: block; }
+
+  /* ── LOADER ── */
+  .loader {
+    display: inline-block;
+    width: 16px; height: 16px;
+    border: 2px solid var(--border2);
+    border-top-color: var(--orange);
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+    vertical-align: middle;
+    margin-right: 6px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<div id="app">
+  <!-- SIDEBAR -->
+  <aside id="sidebar">
+    <div class="sidebar-logo">
+      <div class="brand">ECHO-LINK</div>
+      <div class="slug-badge" id="sidebar-slug">...</div>
+    </div>
+    <nav class="sidebar-nav">
+      <div class="nav-item active" onclick="navigate('dashboard')" id="nav-dashboard">
+        <span class="nav-icon">⚡</span> Temps réel
+      </div>
+      <div class="nav-item" onclick="navigate('cuisine')" id="nav-cuisine">
+        <span class="nav-icon">🍳</span> Cuisine
+      </div>
+      <div class="nav-item" onclick="navigate('historique')" id="nav-historique">
+        <span class="nav-icon">📋</span> Historique
+      </div>
+      <div class="nav-item" onclick="navigate('menu')" id="nav-menu">
+        <span class="nav-icon">📝</span> Menu
+      </div>
+    </nav>
+    <div class="sidebar-footer">
+      <div class="status-dot">
+        <div class="dot" id="status-dot"></div>
+        <span id="status-text">Connexion...</span>
+      </div>
+    </div>
+  </aside>
+
+  <!-- OVERLAY MOBILE -->
+  <div id="sidebar-overlay" onclick="closeSidebar()"></div>
+
+  <!-- MAIN -->
+  <main id="main">
+    <!-- TOPBAR -->
+    <div id="topbar">
+      <div style="display:flex;align-items:center;gap:12px;">
+        <button id="mobile-menu-btn" onclick="toggleSidebar()">☰</button>
+        <div class="topbar-title" id="topbar-title">Dashboard</div>
+      </div>
+      <div class="topbar-actions">
+        <button class="btn" onclick="testCommande()">🧪 Test</button>
+        <button class="btn primary" id="cuisine-btn" onclick="navigate('cuisine')">Mode Cuisine</button>
+      </div>
+    </div>
+
+    <!-- PAGE: DASHBOARD -->
+    <div class="page active" id="page-dashboard">
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-label">Commandes aujourd'hui</div>
+          <div class="stat-value orange" id="stat-nb">—</div>
+          <div class="stat-sub" id="stat-actives">... actives</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">CA du jour</div>
+          <div class="stat-value green" id="stat-ca-jour">—</div>
+          <div class="stat-sub">euros</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">CA du mois</div>
+          <div class="stat-value" id="stat-ca-mois">—</div>
+          <div class="stat-sub">euros</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Heure de pointe</div>
+          <div class="stat-value" id="stat-heure">—</div>
+          <div class="stat-sub">aujourd'hui</div>
+        </div>
+      </div>
+
+      <div class="section-header">
+        <div class="section-title">Commandes actives</div>
+        <div id="commandes-count" style="font-family:var(--mono);font-size:12px;color:var(--text-dim);">0 commande</div>
+      </div>
+      <div id="commandes-grid">
+        <div class="empty-state">
+          <div class="empty-icon">📭</div>
+          <div>Aucune commande active</div>
+          <div style="margin-top:8px;color:var(--text-faint)">Les nouvelles commandes apparaissent ici en temps réel</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PAGE: CUISINE -->
+    <div class="page" id="page-cuisine">
+      <div class="section-header" style="padding:20px 28px 0;">
+        <div class="section-title" style="font-size:16px;">🍳 Cuisine — <span id="cuisine-count">0 commandes</span></div>
+        <button class="btn" onclick="navigate('dashboard')">← Dashboard</button>
+      </div>
+      <div id="cuisine-grid">
+        <div class="empty-state" style="margin:20px 28px;">
+          <div class="empty-icon">✅</div>
+          <div>Aucune commande en attente</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PAGE: HISTORIQUE -->
+    <div class="page" id="page-historique">
+      <div class="hist-filters">
+        <input type="date" id="hist-date" onchange="loadHistorique()">
+        <button class="btn primary" onclick="loadHistorique()">Filtrer</button>
+        <button class="btn" onclick="document.getElementById('hist-date').value='';loadHistorique()">Tout voir</button>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Heure</th>
+              <th>Articles</th>
+              <th>Total</th>
+              <th>Statut</th>
+            </tr>
+          </thead>
+          <tbody id="hist-tbody">
+            <tr><td colspan="4" style="color:var(--text-faint);text-align:center;padding:30px;">Chargement...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- PAGE: MENU -->
+    <div class="page" id="page-menu">
+      <div class="menu-grid">
+        <div>
+          <div class="section-header">
+            <div class="section-title">Articles du menu</div>
+            <button class="btn primary" onclick="saveMenu()">💾 Sauvegarder</button>
+          </div>
+          <div class="menu-list" id="menu-list">
+            <div style="color:var(--text-faint);font-size:13px;">Chargement...</div>
+          </div>
+          <div class="add-form">
+            <input class="menu-input name" id="new-name" placeholder="Nom de l'article" type="text">
+            <input class="menu-input price" id="new-price" placeholder="Prix" type="number" step="0.5" min="0">
+            <button class="btn primary" onclick="addMenuItem()">+</button>
+          </div>
+        </div>
+        <div>
+          <div class="section-header">
+            <div class="section-title">Aperçu</div>
+          </div>
+          <div class="menu-list" id="menu-preview">
+            <div style="color:var(--text-faint);font-size:13px;">Le menu s'affichera ici</div>
+          </div>
+          <div style="margin-top:16px;padding:14px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);">
+            <div class="stat-label">ℹ️ Info</div>
+            <div style="font-size:12px;color:var(--text-dim);margin-top:8px;line-height:1.6;">
+              La sauvegarde met à jour le menu en temps réel. Sofia sera informée des changements de prix et des ruptures de stock.
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- TOAST -->
+<div id="toast"></div>
+
+<script>
+// ── CONFIG ────────────────────────────────────────────────────────────────────
+const slug = location.pathname.split('/dashboard/')[1]?.split('/')[0] || 'elbaraka';
+const token = new URLSearchParams(location.search).get('token') || '';
+const API = ''; // même origin
+
+// ── ÉTAT LOCAL ────────────────────────────────────────────────────────────────
+let commandes = [];
+let menu = [];
+let evtSource = null;
+let timers = {};
+
+// ── INIT ──────────────────────────────────────────────────────────────────────
+document.getElementById('sidebar-slug').textContent = slug;
+document.getElementById('topbar-title').textContent = slug.toUpperCase();
+
+// Date du jour dans filtre historique
+document.getElementById('hist-date').value = new Date().toISOString().split('T')[0];
+
+function init() {
+  loadAnalytics();
+  connectSSE();
+  // Si URL = /cuisine, aller directement en mode cuisine
+  if (location.pathname.endsWith('/cuisine')) {
+    navigate('cuisine');
+  }
+}
+
+// ── SSE ───────────────────────────────────────────────────────────────────────
+function connectSSE() {
+  if (evtSource) evtSource.close();
+  setStatus('connecting');
+  evtSource = new EventSource(`/api/${slug}/events?token=${token}`);
+
+  evtSource.onopen = () => setStatus('live');
+
+  evtSource.onmessage = (e) => {
+    const data = JSON.parse(e.data);
+    if (data.type === 'init') {
+      commandes = data.commandes || [];
+      renderAll();
+    } else if (data.type === 'nouvelle_commande') {
+      commandes.push(data.commande);
+      renderAll();
+      playBeep();
+      showToast('🔔 Nouvelle commande reçue !', 'orange');
+      loadAnalytics();
+    } else if (data.type === 'commande_terminee') {
+      const c = commandes.find(x => x.id === data.commande_id);
+      if (c) c.statut = 'terminee';
+      renderAll();
+    } else if (data.type === 'commande_supprimee') {
+      commandes = commandes.filter(x => x.id !== data.commande_id);
+      renderAll();
+    }
+  };
+
+  evtSource.onerror = () => {
+    setStatus('disconnected');
+    setTimeout(connectSSE, 3000);
+  };
+}
+
+function setStatus(s) {
+  const dot  = document.getElementById('status-dot');
+  const text = document.getElementById('status-text');
+  if (s === 'live') { dot.className='dot live'; text.textContent='Connecté'; }
+  else if (s === 'connecting') { dot.className='dot'; text.textContent='Connexion...'; }
+  else { dot.className='dot'; text.textContent='Déconnecté'; }
+}
+
+// ── RENDER ────────────────────────────────────────────────────────────────────
+function renderAll() {
+  renderDashboard();
+  renderCuisine();
+  const count = commandes.filter(c => c.statut === 'active').length;
+  document.getElementById('commandes-count').textContent = `${count} commande${count>1?'s':''}`;
+}
+
+function renderDashboard() {
+  const grid = document.getElementById('commandes-grid');
+  const active = commandes.filter(c => c.statut === 'active');
+  document.getElementById('stat-actives').textContent = `${active.length} active${active.length>1?'s':''}`;
+
+  if (!commandes.length) {
+    grid.innerHTML = `<div class="empty-state"><div class="empty-icon">📭</div><div>Aucune commande active</div><div style="margin-top:8px;color:var(--text-faint)">Les nouvelles commandes apparaissent ici en temps réel</div></div>`;
+    return;
+  }
+
+  grid.innerHTML = commandes.slice().reverse().map(c => commandeCard(c)).join('');
+  // Démarrer les timers
+  commandes.forEach(c => {
+    if (c.statut === 'active' && !timers[c.id]) {
+      timers[c.id] = setInterval(() => updateTimer(c.id, c.horodatage), 1000);
+    }
+  });
+}
+
+function commandeCard(c) {
+  const t = formatTime(c.horodatage);
+  const elapsed = getElapsed(c.horodatage);
+  return `<div class="commande-card ${c.statut}" id="card-${c.id}">
+    <div class="card-header">
+      <div>
+        <div class="card-id">#${c.id.slice(-6)}</div>
+        <div class="card-time">${t}</div>
+      </div>
+      <div>
+        <div class="card-timer ${elapsed > 900 ? 'urgent' : ''}" id="timer-${c.id}">${fmtElapsed(elapsed)}</div>
+      </div>
+    </div>
+    <ul class="card-articles">
+      ${(c.articles||[]).map(a => `<li>${a}</li>`).join('')}
+    </ul>
+    <div class="card-footer">
+      <div class="card-total">${parseFloat(c.total||0).toFixed(2)} €</div>
+      ${c.statut === 'active'
+        ? `<button class="btn success" onclick="terminerCommande('${c.id}')">✓ Terminé</button>`
+        : `<span class="badge done">Terminée</span>`}
+    </div>
+  </div>`;
+}
+
+function renderCuisine() {
+  const grid = document.getElementById('cuisine-grid');
+  const active = commandes.filter(c => c.statut === 'active');
+  document.getElementById('cuisine-count').textContent = `${active.length} commande${active.length>1?'s':''}`;
+
+  if (!active.length) {
+    grid.innerHTML = `<div class="empty-state" style="margin:20px 28px;"><div class="empty-icon">✅</div><div>Aucune commande en attente</div></div>`;
+    return;
+  }
+
+  grid.innerHTML = active.map(c => {
+    const elapsed = getElapsed(c.horodatage);
+    return `<div class="cuisine-card" id="cuisine-card-${c.id}">
+      <div class="card-header">
+        <div>
+          <div class="card-id">#${c.id.slice(-6)}</div>
+          <div class="card-time">${formatTime(c.horodatage)}</div>
+        </div>
+        <div class="card-timer ${elapsed > 900 ? 'urgent' : ''}" id="cuisine-timer-${c.id}">${fmtElapsed(elapsed)}</div>
+      </div>
+      <ul class="card-articles">
+        ${(c.articles||[]).map(a => `<li>${a}</li>`).join('')}
+      </ul>
+      <div class="card-footer">
+        <div class="card-total">${parseFloat(c.total||0).toFixed(2)} €</div>
+      </div>
+      <button class="cuisine-btn-done" onclick="terminerCommande('${c.id}')">✅ Commande prête</button>
+    </div>`;
+  }).join('');
+}
+
+function updateTimer(id, horodatage) {
+  const elapsed = getElapsed(horodatage);
+  const el1 = document.getElementById(`timer-${id}`);
+  const el2 = document.getElementById(`cuisine-timer-${id}`);
+  const txt = fmtElapsed(elapsed);
+  const urgent = elapsed > 900;
+  if (el1) { el1.textContent = txt; el1.className = `card-timer ${urgent?'urgent':''}`; }
+  if (el2) { el2.textContent = txt; el2.className = `card-timer ${urgent?'urgent':''}`; }
+}
+
+function getElapsed(ts) {
+  return ts ? Math.floor((Date.now() - new Date(ts).getTime()) / 1000) : 0;
+}
+
+function fmtElapsed(s) {
+  if (s < 60) return `${s}s`;
+  return `${Math.floor(s/60)}m${String(s%60).padStart(2,'0')}s`;
+}
+
+function formatTime(ts) {
+  if (!ts) return '';
+  return new Date(ts).toLocaleTimeString('fr-FR', { hour:'2-digit', minute:'2-digit', second:'2-digit' });
+}
+
+// ── ACTIONS ───────────────────────────────────────────────────────────────────
+async function terminerCommande(id) {
+  const btn = document.querySelector(`#card-${id} .btn, #cuisine-card-${id} .cuisine-btn-done`);
+  if (btn) { btn.disabled = true; btn.textContent = '...'; }
+
+  try {
+    await fetch(`/api/${slug}/commandes/${id}/terminer?token=${token}`, {
+      method: 'POST',
+      headers: { 'x-dashboard-token': token },
+    });
+    const c = commandes.find(x => x.id === id);
+    if (c) c.statut = 'terminee';
+    clearInterval(timers[id]);
+    delete timers[id];
+    renderAll();
+    showToast('✅ Commande terminée', 'green');
+  } catch(e) {
+    showToast('❌ Erreur réseau', 'red');
+    if (btn) { btn.disabled = false; btn.textContent = '✓ Terminé'; }
+  }
+}
+
+async function testCommande() {
+  try {
+    await fetch(`/api/${slug}/test-commande?token=${token}`);
+    showToast('🧪 Commande test envoyée', 'orange');
+  } catch(e) { showToast('❌ Erreur', 'red'); }
+}
+
+// ── ANALYTICS ────────────────────────────────────────────────────────────────
+async function loadAnalytics() {
+  try {
+    const r = await fetch(`/api/${slug}/analytics?token=${token}`);
+    const d = await r.json();
+    document.getElementById('stat-nb').textContent = d.nb_commandes_jour ?? '0';
+    document.getElementById('stat-ca-jour').textContent = `${(d.ca_jour||0).toFixed(2)} €`;
+    document.getElementById('stat-ca-mois').textContent = `${(d.ca_mois||0).toFixed(2)} €`;
+    document.getElementById('stat-heure').textContent = d.heure_pointe || '—';
+  } catch(e) {}
+}
+
+// ── HISTORIQUE ────────────────────────────────────────────────────────────────
+async function loadHistorique() {
+  const date = document.getElementById('hist-date').value;
+  const tbody = document.getElementById('hist-tbody');
+  tbody.innerHTML = `<tr><td colspan="4" style="text-align:center;color:var(--text-dim);padding:20px;"><span class="loader"></span> Chargement...</td></tr>`;
+  try {
+    const url = `/api/${slug}/historique?token=${token}${date?'&date='+date:''}`;
+    const r = await fetch(url);
+    const d = await r.json();
+    const rows = d.commandes || [];
+    if (!rows.length) {
+      tbody.innerHTML = `<tr><td colspan="4" style="text-align:center;color:var(--text-faint);padding:30px;">Aucune commande pour cette période</td></tr>`;
+      return;
+    }
+    tbody.innerHTML = rows.map(c => `
+      <tr>
+        <td>${formatTime(c.horodatage)}</td>
+        <td>${(c.articles||[]).join(', ')}</td>
+        <td style="color:var(--green)">${parseFloat(c.total||0).toFixed(2)} €</td>
+        <td><span class="badge ${c.statut==='terminee'?'done':'active'}">${c.statut==='terminee'?'Terminée':'Active'}</span></td>
+      </tr>`).join('');
+  } catch(e) {
+    tbody.innerHTML = `<tr><td colspan="4" style="text-align:center;color:var(--red)">Erreur de chargement</td></tr>`;
+  }
+}
+
+// ── MENU ──────────────────────────────────────────────────────────────────────
+async function loadMenu() {
+  try {
+    const r = await fetch(`/api/${slug}/menu?token=${token}`);
+    const d = await r.json();
+    menu = d.menu || [];
+    renderMenu();
+  } catch(e) {}
+}
+
+function renderMenu() {
+  const list = document.getElementById('menu-list');
+  const preview = document.getElementById('menu-preview');
+
+  if (!menu.length) {
+    list.innerHTML = `<div style="color:var(--text-faint);font-size:13px;">Menu vide — ajoutez des articles ci-dessous</div>`;
+    preview.innerHTML = `<div style="color:var(--text-faint);font-size:13px;">Aucun article</div>`;
+    return;
+  }
+
+  list.innerHTML = menu.map((item, i) => `
+    <div class="menu-item-row">
+      <input class="menu-input name" value="${esc(item.nom)}" onchange="menu[${i}].nom=this.value;renderPreview()" placeholder="Nom">
+      <input class="menu-input price" value="${item.prix||0}" type="number" step="0.5" min="0" onchange="menu[${i}].prix=parseFloat(this.value);renderPreview()">
+      <label class="toggle-switch">
+        <input type="checkbox" ${item.disponible!==false?'checked':''} onchange="menu[${i}].disponible=this.checked;renderPreview()">
+        <span class="toggle-slider"></span>
+      </label>
+      <button class="del-btn" onclick="removeMenuItem(${i})">✕</button>
+    </div>`).join('');
+
+  renderPreview();
+}
+
+function renderPreview() {
+  const preview = document.getElementById('menu-preview');
+  if (!menu.length) { preview.innerHTML = `<div style="color:var(--text-faint);font-size:13px;">Aucun article</div>`; return; }
+  preview.innerHTML = menu.map(item => `
+    <div class="menu-item-row">
+      <span style="flex:1;font-size:13px;color:${item.disponible===false?'var(--text-faint)':'var(--text)'}">
+        ${item.disponible===false ? '🔴' : '🟢'} ${esc(item.nom)}
+      </span>
+      <span style="font-family:var(--mono);font-size:13px;color:var(--green)">${parseFloat(item.prix||0).toFixed(2)} €</span>
+    </div>`).join('');
+}
+
+function addMenuItem() {
+  const nom = document.getElementById('new-name').value.trim();
+  const prix = parseFloat(document.getElementById('new-price').value) || 0;
+  if (!nom) return;
+  menu.push({ nom, prix, disponible: true });
+  document.getElementById('new-name').value = '';
+  document.getElementById('new-price').value = '';
+  renderMenu();
+}
+
+function removeMenuItem(i) {
+  menu.splice(i, 1);
+  renderMenu();
+}
+
+async function saveMenu() {
+  try {
+    const r = await fetch(`/api/${slug}/menu?token=${token}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-dashboard-token': token },
+      body: JSON.stringify({ menu }),
+    });
+    const d = await r.json();
+    if (d.success) showToast('✅ Menu sauvegardé', 'green');
+    else showToast('❌ Erreur sauvegarde', 'red');
+  } catch(e) { showToast('❌ Erreur réseau', 'red'); }
+}
+
+// ── NAVIGATION ────────────────────────────────────────────────────────────────
+function navigate(page) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.getElementById(`page-${page}`).classList.add('active');
+  document.getElementById(`nav-${page}`)?.classList.add('active');
+
+  const titles = { dashboard: 'Temps réel', cuisine: '🍳 Cuisine', historique: 'Historique', menu: 'Gestion du menu' };
+  document.getElementById('topbar-title').textContent = titles[page] || page;
+
+  if (page === 'historique') loadHistorique();
+  if (page === 'menu') loadMenu();
+
+  closeSidebar();
+}
+
+// ── SIDEBAR MOBILE ────────────────────────────────────────────────────────────
+function toggleSidebar() {
+  document.getElementById('sidebar').classList.toggle('open');
+  document.getElementById('sidebar-overlay').classList.toggle('show');
+}
+function closeSidebar() {
+  document.getElementById('sidebar').classList.remove('open');
+  document.getElementById('sidebar-overlay').classList.remove('show');
+}
+
+// ── TOAST ─────────────────────────────────────────────────────────────────────
+let toastTimer;
+function showToast(msg, type) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.style.borderLeftColor = type === 'green' ? 'var(--green)' : type === 'red' ? 'var(--red)' : 'var(--orange)';
+  t.className = 'show';
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.className = '', 3000);
+}
+
+// ── BEEP ──────────────────────────────────────────────────────────────────────
+function playBeep() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain); gain.connect(ctx.destination);
+    osc.frequency.value = 880;
+    gain.gain.setValueAtTime(0.3, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4);
+    osc.start(); osc.stop(ctx.currentTime + 0.4);
+  } catch(e) {}
+}
+
+function esc(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// Démarrer les timers existants
+setInterval(() => {
+  commandes.forEach(c => {
+    if (c.statut === 'active') updateTimer(c.id, c.horodatage);
+  });
+}, 1000);
+
+// ── START ──────────────────────────────────────────────────────────────────────
+init();
+</script>
+</body>
+</html>
